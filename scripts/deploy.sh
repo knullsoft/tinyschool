@@ -8,6 +8,8 @@ DEPLOY_USER="${DEPLOY_USER:-root}"
 DEPLOY_PATH="${DEPLOY_PATH:-/opt/tinyschool}"
 DEPLOY_DOMAIN="${DEPLOY_DOMAIN:-tinyschool.${DEPLOY_HOST}.nip.io}"
 DEPLOY_SSH_KEY="${DEPLOY_SSH_KEY:-}"
+STACK_NAME="${STACK_NAME:-tinyschool}"
+PROXY_NETWORK="${PROXY_NETWORK:-proxy}"
 REGISTRY="${REGISTRY:-ghcr.io}"
 REGISTRY_USER="${REGISTRY_USER:-}"
 REGISTRY_TOKEN="${REGISTRY_TOKEN:-}"
@@ -34,6 +36,8 @@ command -v curl >/dev/null || fail "curl is required"
 [[ "${DEPLOY_HOST}" =~ ^[a-zA-Z0-9.-]+$ ]] || fail "DEPLOY_HOST contains unsupported characters"
 [[ "${DEPLOY_USER}" =~ ^[a-zA-Z0-9._-]+$ ]] || fail "DEPLOY_USER contains unsupported characters"
 [[ "${DEPLOY_DOMAIN}" =~ ^[a-zA-Z0-9.-]+$ ]] || fail "DEPLOY_DOMAIN contains unsupported characters"
+[[ "${STACK_NAME}" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || fail "STACK_NAME contains unsupported characters"
+[[ "${PROXY_NETWORK}" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || fail "PROXY_NETWORK contains unsupported characters"
 [[ "${RELEASE_ID}" =~ ^[a-zA-Z0-9._-]+$ ]] || fail "release ID contains unsupported characters"
 if [[ -z "${IMAGE_API}" ]]; then
   DEPLOY_MODE="build"
@@ -56,9 +60,20 @@ REMOTE_RELEASE="${DEPLOY_PATH}/releases/${RELEASE_ID}"
 log "Checking SSH access to ${REMOTE}"
 "${SSH[@]}" "true" || fail "SSH authentication failed for ${REMOTE}"
 
-log "Checking Docker Compose"
-"${SSH[@]}" "docker compose version >/dev/null 2>&1" \
-  || fail "Docker Compose is not available on ${REMOTE}"
+log "Checking Docker Swarm"
+"${SSH[@]}" "docker info --format '{{.Swarm.LocalNodeState}}' | grep -qx active" \
+  || fail "Docker Swarm is not active on ${REMOTE}; bootstrap with ../deployer first"
+
+log "Checking shared Traefik proxy network"
+"${SSH[@]}" bash -s -- "${PROXY_NETWORK}" <<'CHECK'
+set -Eeuo pipefail
+network="$1"
+docker network inspect "${network}" >/dev/null 2>&1 \
+  || { echo "Docker network '${network}' is missing; bootstrap Traefik first" >&2; exit 1; }
+driver="$(docker network inspect -f '{{.Driver}}' "${network}")"
+[[ "${driver}" == "overlay" ]] \
+  || { echo "network '${network}' driver is ${driver}, expected overlay" >&2; exit 1; }
+CHECK
 
 log "Uploading release ${RELEASE_ID}"
 "${SSH[@]}" "mkdir -p '${REMOTE_RELEASE}'"
@@ -95,7 +110,7 @@ else
 fi
 "${SSH[@]}" bash -s -- \
   "${REMOTE_RELEASE}" "${DEPLOY_PATH}" "${DEPLOY_DOMAIN}" "${IMAGE_API}" \
-  "${DEPLOY_MODE}" "${APP_VERSION}" <<'REMOTE'
+  "${DEPLOY_MODE}" "${APP_VERSION}" "${STACK_NAME}" <<'REMOTE'
 set -Eeuo pipefail
 release_path="$1"
 deploy_path="$2"
@@ -103,16 +118,31 @@ domain="$3"
 image_api="$4"
 deploy_mode="$5"
 app_version="$6"
+stack_name="$7"
 
-cd "${release_path}/deploy"
-export DOMAIN="${domain}" IMAGE_API="${image_api}" APP_VERSION="${app_version}"
+cd "${release_path}"
 if [[ "${deploy_mode}" == "build" ]]; then
-  docker compose build api
+  docker build \
+    -t "${image_api}" \
+    --build-arg "APP_VERSION=${app_version}" \
+    -f deploy/api.Dockerfile \
+    .
 else
-  docker compose pull --quiet api
+  docker pull --quiet "${image_api}"
 fi
-docker compose up -d --remove-orphans
+
+export DOMAIN="${domain}" IMAGE_API="${image_api}"
+# Local build tags are not on a registry; skip Swarm's default pull resolve.
+resolve_image=always
+if [[ "${deploy_mode}" == "build" ]]; then
+  resolve_image=never
+fi
+docker stack deploy \
+  --resolve-image "${resolve_image}" \
+  -c deploy/stack.yaml \
+  "${stack_name}"
 ln -sfn "${release_path}" "${deploy_path}/current"
+
 # Per-commit tags accumulate; drop unused images older than a week so the
 # host does not slowly fill up.
 docker image prune -af --filter 'until=168h' >/dev/null || true
@@ -122,6 +152,27 @@ if [[ -n "${REGISTRY_TOKEN}" ]]; then
   "${SSH[@]}" "docker logout '${REGISTRY}' >/dev/null" || true
 fi
 
+log "Waiting for swarm service ${STACK_NAME}_api"
+"${SSH[@]}" bash -s -- "${STACK_NAME}" <<'WAIT'
+set -Eeuo pipefail
+stack_name="$1"
+service_name="${stack_name}_api"
+for attempt in $(seq 1 45); do
+  replicas="$(docker service ls --format '{{.Name}} {{.Replicas}}' 2>/dev/null | awk -v n="${service_name}" '$1==n {print $2}')"
+  if [[ "${replicas}" == "1/1" ]]; then
+    exit 0
+  fi
+  if [[ "${attempt}" -eq 45 ]]; then
+    docker service ls || true
+    docker service ps "${service_name}" --no-trunc 2>/dev/null || true
+    docker service logs --tail 50 "${service_name}" 2>/dev/null || true
+    echo "service ${service_name} did not reach 1/1 (last replicas=${replicas:-none})" >&2
+    exit 1
+  fi
+  sleep 2
+done
+WAIT
+
 log "Waiting for https://${DEPLOY_DOMAIN}/ready"
 for attempt in {1..30}; do
   if curl --fail --silent --show-error --max-time 10 "https://${DEPLOY_DOMAIN}/ready" >/dev/null 2>&1; then
@@ -129,8 +180,8 @@ for attempt in {1..30}; do
     exit 0
   fi
   if (( attempt == 30 )); then
-    "${SSH[@]}" "cd '${REMOTE_RELEASE}/deploy' && DOMAIN='${DEPLOY_DOMAIN}' IMAGE_API='${IMAGE_API}' docker compose ps"
-    fail "service did not become ready"
+    "${SSH[@]}" "docker service ps '${STACK_NAME}_api' --no-trunc; docker service logs --tail 50 '${STACK_NAME}_api'" || true
+    fail "service did not become ready at https://${DEPLOY_DOMAIN}/ready"
   fi
   sleep 2
 done

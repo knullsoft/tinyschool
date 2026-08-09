@@ -1,0 +1,48 @@
+# TinySchool app stack for a VPS bootstrapped by ../deployer.
+# Prerequisites on the VPS:
+#   - Swarm manager ready
+#   - Attachable overlay network `proxy`
+#   - Shared Traefik stack (entrypoints web/websecure, certresolver le)
+#
+# Deploy (from deploy.sh, or on the VPS):
+#   DOMAIN=tinyschool.example.com IMAGE_API=ghcr.io/.../tinyschool-api:tag \
+#     docker stack deploy -c stack.yaml tinyschool
+
+services:
+  api:
+    image: ${IMAGE_API}
+    environment:
+      TINYSCHOOL_API_ADDRESS: ":8080"
+      TINYSCHOOL_DB_PATH: /data/tinyschool.db
+      # Origin used to build password reset links written to the API log.
+      TINYSCHOOL_APP_BASE_URL: https://${DOMAIN}
+    volumes:
+      - data:/data
+    networks:
+      - proxy
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      placement:
+        # SQLite needs a single writer on one node.
+        constraints:
+          - node.role == manager
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=proxy
+        - traefik.http.routers.tinyschool.rule=Host(`${DOMAIN}`)
+        - traefik.http.routers.tinyschool.entrypoints=websecure
+        - traefik.http.routers.tinyschool.tls=true
+        - traefik.http.routers.tinyschool.tls.certresolver=le
+        - traefik.http.services.tinyschool.loadbalancer.server.port=8080
+
+networks:
+  proxy:
+    external: true
+    name: proxy
+
+volumes:
+  data:

@@ -91,19 +91,31 @@ present with its header row.
 
 ## Deploy (SSH)
 
-The same script deploys from a laptop or GitHub Actions:
+Requires the shared edge from [`../deployer`](../deployer) (Swarm + Traefik on
+overlay network `proxy`). The same script deploys from a laptop or GitHub Actions:
 
 ```text
-laptop: upload source → build on server → Caddy serves HTTPS → readiness check
-CI:     upload source → pull CI image → Caddy serves HTTPS → readiness check
+laptop: upload source → build image → docker stack deploy → Traefik HTTPS → /ready
+CI:     upload source → pull CI image → docker stack deploy → Traefik HTTPS → /ready
 ```
 
-The server needs Docker with the Compose plugin and SSH key access. Caddy was
-chosen over Traefik because this single-app setup only needs one small routing
-file and automatic HTTPS. The API image embeds the static UI; Caddy proxies
-everything to the API.
+```text
+deployer (once)          tinyschool (per release)
+─────────────────        ─────────────────────────
+Swarm + Traefik    ──►   stack tinyschool_api
+overlay: proxy           deploy.labels → Host(DOMAIN)
+certresolver: le         joins network proxy
+```
+
+TinySchool deploys as Swarm stack `tinyschool` (`deploy/stack.yaml`). Labels live
+under `deploy.labels` so Traefik's swarm provider picks them up. The API image
+embeds the static UI; Traefik proxies everything to port 8080.
 
 ```bash
+# one-time on the VPS (from the deployer repo)
+DEPLOY_HOST=147.93.97.228 ACME_EMAIL=you@example.com ./scripts/bootstrap-vps.sh
+
+# then from this repo
 ssh-copy-id root@147.93.97.228
 ./scripts/deploy.sh
 ```
@@ -113,9 +125,9 @@ Default URL: `https://tinyschool.147.93.97.228.nip.io`
 No image variable is needed when building on the server. `IMAGE_API` is an
 optional CI override for pulling a pre-built image from the registry.
 
-Override configuration with `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH`, or
-`DEPLOY_DOMAIN`. SQLite and Caddy certificates remain in named Docker volumes
-between releases.
+Override with `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH`, `DEPLOY_DOMAIN`,
+`STACK_NAME`, or `PROXY_NETWORK`. SQLite lives in the stack volume
+`tinyschool_data` (single replica on the manager); TLS stays with Traefik.
 
 ### GitHub Actions
 
