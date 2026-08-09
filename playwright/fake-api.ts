@@ -211,7 +211,7 @@ function response(path: string, setupPage: boolean, classroom?: string, emptyWor
 }
 
 export async function mockApi(page: Page, setupPage: boolean, emptyWorkspace = false) {
-  await page.route('http://localhost:8080/api/v1/**', async (route: Route) => {
+  await page.route('**/api/v1/**', async (route: Route) => {
     const url = new URL(route.request().url())
     const path = url.pathname.replace('/api/v1', '')
     const classroom = url.searchParams.get('classroom') || undefined

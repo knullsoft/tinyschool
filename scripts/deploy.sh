@@ -11,7 +11,6 @@ DEPLOY_SSH_KEY="${DEPLOY_SSH_KEY:-}"
 REGISTRY="${REGISTRY:-ghcr.io}"
 REGISTRY_USER="${REGISTRY_USER:-}"
 REGISTRY_TOKEN="${REGISTRY_TOKEN:-}"
-IMAGE_UI="${IMAGE_UI:-}"
 IMAGE_API="${IMAGE_API:-}"
 REMOTE="${DEPLOY_USER}@${DEPLOY_HOST}"
 RELEASE_ID="${GITHUB_SHA:-$(date -u +%Y%m%d%H%M%S)}"
@@ -36,14 +35,10 @@ command -v curl >/dev/null || fail "curl is required"
 [[ "${DEPLOY_USER}" =~ ^[a-zA-Z0-9._-]+$ ]] || fail "DEPLOY_USER contains unsupported characters"
 [[ "${DEPLOY_DOMAIN}" =~ ^[a-zA-Z0-9.-]+$ ]] || fail "DEPLOY_DOMAIN contains unsupported characters"
 [[ "${RELEASE_ID}" =~ ^[a-zA-Z0-9._-]+$ ]] || fail "release ID contains unsupported characters"
-if [[ -z "${IMAGE_UI}" && -z "${IMAGE_API}" ]]; then
+if [[ -z "${IMAGE_API}" ]]; then
   DEPLOY_MODE="build"
-  IMAGE_UI="tinyschool-ui:${RELEASE_ID}"
   IMAGE_API="tinyschool-api:${RELEASE_ID}"
-elif [[ -z "${IMAGE_UI}" || -z "${IMAGE_API}" ]]; then
-  fail "IMAGE_UI and IMAGE_API must either both be set or both be omitted"
 fi
-[[ "${IMAGE_UI}" =~ ^[a-zA-Z0-9./:_-]+$ ]] || fail "IMAGE_UI contains unsupported characters"
 [[ "${IMAGE_API}" =~ ^[a-zA-Z0-9./:_-]+$ ]] || fail "IMAGE_API contains unsupported characters"
 [[ "${APP_VERSION}" =~ ^[a-zA-Z0-9._+-]+$ ]] || fail "app version contains unsupported characters"
 
@@ -94,28 +89,27 @@ if [[ -n "${REGISTRY_TOKEN}" ]]; then
 fi
 
 if [[ "${DEPLOY_MODE}" == "build" ]]; then
-  log "Building ${IMAGE_UI} and ${IMAGE_API} on ${REMOTE}"
+  log "Building ${IMAGE_API} on ${REMOTE}"
 else
-  log "Pulling ${IMAGE_UI} and ${IMAGE_API}"
+  log "Pulling ${IMAGE_API}"
 fi
 "${SSH[@]}" bash -s -- \
-  "${REMOTE_RELEASE}" "${DEPLOY_PATH}" "${DEPLOY_DOMAIN}" "${IMAGE_UI}" "${IMAGE_API}" \
+  "${REMOTE_RELEASE}" "${DEPLOY_PATH}" "${DEPLOY_DOMAIN}" "${IMAGE_API}" \
   "${DEPLOY_MODE}" "${APP_VERSION}" <<'REMOTE'
 set -Eeuo pipefail
 release_path="$1"
 deploy_path="$2"
 domain="$3"
-image_ui="$4"
-image_api="$5"
-deploy_mode="$6"
-app_version="$7"
+image_api="$4"
+deploy_mode="$5"
+app_version="$6"
 
 cd "${release_path}/deploy"
-export DOMAIN="${domain}" IMAGE_UI="${image_ui}" IMAGE_API="${image_api}" APP_VERSION="${app_version}"
+export DOMAIN="${domain}" IMAGE_API="${image_api}" APP_VERSION="${app_version}"
 if [[ "${deploy_mode}" == "build" ]]; then
-  docker compose build api ui
+  docker compose build api
 else
-  docker compose pull --quiet api ui
+  docker compose pull --quiet api
 fi
 docker compose up -d --remove-orphans
 ln -sfn "${release_path}" "${deploy_path}/current"
@@ -135,7 +129,7 @@ for attempt in {1..30}; do
     exit 0
   fi
   if (( attempt == 30 )); then
-    "${SSH[@]}" "cd '${REMOTE_RELEASE}/deploy' && DOMAIN='${DEPLOY_DOMAIN}' IMAGE_UI='${IMAGE_UI}' IMAGE_API='${IMAGE_API}' docker compose ps"
+    "${SSH[@]}" "cd '${REMOTE_RELEASE}/deploy' && DOMAIN='${DEPLOY_DOMAIN}' IMAGE_API='${IMAGE_API}' docker compose ps"
     fail "service did not become ready"
   fi
   sleep 2

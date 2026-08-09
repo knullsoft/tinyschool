@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "nuxt build",
+    "build": "nuxt generate",
+    "generate": "nuxt generate",
     "dev": "nuxt dev",
     "screenshots": "../scripts/take-screenshot.sh",
     "preview": "nuxt preview",

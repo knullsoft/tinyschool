@@ -8,16 +8,17 @@ A simply school management software to manage students, classes
 ./scripts/run-local.sh
 ```
 
-Open `http://127.0.0.1:3000`. Logs and PID files are written to
-`.runs/local`.
+This stops any previous local run, builds the static UI into the API binary, and
+starts a single Go server. Open `http://127.0.0.1:8080`. Logs and PID files are
+written to `.runs/local`.
 
-Override occupied ports when needed:
+Override the port when needed:
 
 ```bash
-TINYSCHOOL_API_PORT=8180 TINYSCHOOL_UI_PORT=3100 ./scripts/run-local.sh
+TINYSCHOOL_API_PORT=8180 ./scripts/run-local.sh
 ```
 
-Stop both servers with:
+Stop the server with:
 
 ```bash
 ./scripts/stop-local.sh
@@ -25,6 +26,12 @@ Stop both servers with:
 
 Local data is stored in `.runs/local/tinyschool.db`. A new database starts
 empty; create an account from the registration page.
+
+Screenshots still use a UI-only Nuxt dev server (no API):
+
+```bash
+./scripts/take-screenshot.sh
+```
 
 ## API architecture
 
@@ -42,17 +49,21 @@ Cobra/Viper -> server -> delivery/http -> service -> storage interface
 - `internal/storage/gormsqlite`: all GORM, SQLite, migration, seed, and query
   code.
 - `internal/delivery/http`: handlers and HTTP middleware.
+- `internal/staticui`: embedded Nuxt SPA served at `/`.
 - `internal/server`: routes and graceful shutdown.
 
 The detailed endpoint contract and implementation plan is in
 `requirements/api-plan.md`.
 
-Run the API directly:
+Run the API directly (build the UI first if you changed it):
 
 ```bash
+./scripts/build-ui.sh
 cd tinyschool-api
 go run . --database ./tinyschool.db --address :8080
 ```
+
+UI is served at `/`; JSON API lives under `/api/v1`. Probes: `/health`, `/ready`.
 
 ## Data export and import
 
@@ -84,12 +95,13 @@ The same script deploys from a laptop or GitHub Actions:
 
 ```text
 laptop: upload source → build on server → Caddy serves HTTPS → readiness check
-CI:     upload source → pull CI images → Caddy serves HTTPS → readiness check
+CI:     upload source → pull CI image → Caddy serves HTTPS → readiness check
 ```
 
 The server needs Docker with the Compose plugin and SSH key access. Caddy was
 chosen over Traefik because this single-app setup only needs one small routing
-file and automatic HTTPS.
+file and automatic HTTPS. The API image embeds the static UI; Caddy proxies
+everything to the API.
 
 ```bash
 ssh-copy-id root@147.93.97.228
@@ -98,8 +110,8 @@ ssh-copy-id root@147.93.97.228
 
 Default URL: `https://tinyschool.147.93.97.228.nip.io`
 
-No image variables are needed when running locally. `IMAGE_UI` and `IMAGE_API`
-remain optional CI overrides and must be provided together.
+No image variable is needed when building on the server. `IMAGE_API` is an
+optional CI override for pulling a pre-built image from the registry.
 
 Override configuration with `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH`, or
 `DEPLOY_DOMAIN`. SQLite and Caddy certificates remain in named Docker volumes
@@ -112,11 +124,11 @@ Optional repository variables use the same `DEPLOY_*` names above.
 
 #### Releases
 
-Versions are git tags (`vX.Y.Z`). The tag is baked into the UI and shown as a
-subtle footer on every page.
+Versions are git tags (`vX.Y.Z`). The tag is baked into the UI at image build
+time and shown as a subtle footer on every page.
 
 ```text
-tag v0.1.0 ──► Deploy workflow ──► images + production ──► footer shows v0.1.0
+tag v0.1.0 ──► Deploy workflow ──► api image + production ──► footer shows v0.1.0
 ```
 
 Create a release either way:

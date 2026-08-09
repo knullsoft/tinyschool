@@ -127,7 +127,7 @@ func New(store storage.Storage, options ...Option) *App {
 		sessionDuration:    24 * time.Hour,
 		tokenDuration:      15 * time.Minute,
 		resetTokenDuration: time.Hour,
-		appBaseURL:         "http://localhost:3000",
+		appBaseURL:         "http://localhost:8080",
 		jwtSecret:          secret,
 		logger:             slog.Default(),
 	}

@@ -27,7 +27,7 @@ env:
 
 jobs:
   # Images are built here rather than on the deploy host: the VPS needs ~20
-  # minutes for a single Nuxt build, which blew the job timeout and rebuilt from
+  # minutes for a Nuxt build, which blew the job timeout and rebuilt from
   # scratch on every deploy. Runners are faster and keep a layer cache.
   build:
     runs-on: ubuntu-latest
@@ -37,13 +37,6 @@ jobs:
       packages: write
     outputs:
       app_version: ${{ steps.meta.outputs.version }}
-    strategy:
-      matrix:
-        include:
-          - name: ui
-            dockerfile: deploy/ui.Dockerfile
-          - name: api
-            dockerfile: deploy/api.Dockerfile
     steps:
       - uses: actions/checkout@v5
         with:
@@ -82,23 +75,23 @@ jobs:
         id: docker_meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}
+          images: ${{ env.IMAGE_PREFIX }}-api
           tags: |
             type=raw,value=${{ github.sha }}
             type=raw,value=${{ steps.meta.outputs.version }}
             type=raw,value=latest,enable=${{ steps.meta.outputs.is_release == 'true' }}
 
-      - name: Build and push ${{ matrix.name }}
+      - name: Build and push api
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ${{ matrix.dockerfile }}
+          file: deploy/api.Dockerfile
           push: true
           tags: ${{ steps.docker_meta.outputs.tags }}
           build-args: |
             APP_VERSION=${{ steps.meta.outputs.version }}
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,scope=${{ matrix.name }},mode=max
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
 
   deploy:
     needs: build
@@ -157,7 +150,6 @@ jobs:
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/tinyschool' }}
           DEPLOY_DOMAIN: ${{ vars.DEPLOY_DOMAIN || 'tinyschool.147.93.97.228.nip.io' }}
           DEPLOY_SSH_KEY: /home/runner/.ssh/deploy_key
-          IMAGE_UI: ${{ env.IMAGE_PREFIX }}-ui:${{ github.sha }}
           IMAGE_API: ${{ env.IMAGE_PREFIX }}-api:${{ github.sha }}
           # Job-scoped token, so the host never stores a long-lived credential.
           REGISTRY: ${{ env.REGISTRY }}

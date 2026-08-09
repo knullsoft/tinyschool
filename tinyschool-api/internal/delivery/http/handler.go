@@ -8,6 +8,7 @@ import (
 
 	"tinyschool-api/internal/dto"
 	"tinyschool-api/internal/service"
+	"tinyschool-api/internal/staticui"
 	"tinyschool-api/internal/tenancy"
 )
 
@@ -34,9 +35,8 @@ func NewHandler(app *service.App, logger *slog.Logger) http.Handler {
 	protected := http.NewServeMux()
 	handler.registerProtectedRoutes(protected)
 	mux.Handle("/api/v1/", handler.authenticate(protected))
-	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
-		writeError(w, http.StatusNotFound, "not_found", "endpoint not found")
-	})
+	// SPA catch-all after API and probe routes so /api/v1, /health, /ready win.
+	mux.Handle("/", staticui.Handler())
 	return recoverer(logger, cors(mux))
 }
 

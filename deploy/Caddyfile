@@ -1,20 +1,4 @@
 {$DOMAIN} {
 	encode zstd gzip
-
-	handle /api/* {
-		reverse_proxy api:8080
-	}
-
-	handle /health {
-		reverse_proxy api:8080
-	}
-
-	handle /ready {
-		reverse_proxy api:8080
-	}
-
-	handle {
-		reverse_proxy ui:3000
-	}
+	reverse_proxy api:8080
 }
-

@@ -1,0 +1,27 @@
+version: "3"
+
+tasks:
+  build:
+    desc: Build static UI into the API binary
+    cmds:
+      - ./scripts/build-ui.sh
+
+  run-dev:
+    desc: Stop previous local run, build UI, and start the Go API
+    cmds:
+      - ./scripts/run-local.sh
+
+  stop-dev:
+    desc: Stop the local API (and any leftover UI) process
+    cmds:
+      - ./scripts/stop-local.sh
+
+  screenshot:
+    desc: Capture light/dark Playwright screenshots
+    cmds:
+      - ./scripts/take-screenshot.sh
+
+  deploy:
+    desc: Deploy to the remote host over SSH
+    cmds:
+      - ./scripts/deploy.sh

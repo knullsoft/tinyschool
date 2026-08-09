@@ -2,9 +2,12 @@
 export default defineNuxtConfig({
   modules: ['@nuxt/eslint', '@nuxt/ui'],
 
-  // Browser-level API mocks only see client requests. Keep production SSR
-  // unchanged and opt into SPA rendering only for the screenshot harness.
-  ssr: import.meta.env.NUXT_PLAYWRIGHT_SPA !== 'true',
+  // Static SPA: embedded in the Go binary and served from the same origin.
+  ssr: false,
+
+  nitro: {
+    preset: 'static'
+  },
 
   devtools: {
     enabled: false
@@ -18,7 +21,8 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      apiBase: 'http://localhost:8080/api/v1',
+      // Same-origin when UI is served by the API; override for local Nuxt dev if needed.
+      apiBase: '/api/v1',
       // Overridden at build/runtime by NUXT_PUBLIC_APP_VERSION (git tag in CI).
       appVersion: 'dev'
     }

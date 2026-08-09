@@ -5,11 +5,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_DIR="${ROOT_DIR}/.runs/local"
 API_PID_FILE="${RUN_DIR}/api.pid"
-UI_PID_FILE="${RUN_DIR}/ui.pid"
 API_HOST="${TINYSCHOOL_API_HOST:-127.0.0.1}"
 API_PORT="${TINYSCHOOL_API_PORT:-8080}"
-UI_HOST="${TINYSCHOOL_UI_HOST:-127.0.0.1}"
-UI_PORT="${TINYSCHOOL_UI_PORT:-3000}"
 PUBLIC_HOST="${TINYSCHOOL_PUBLIC_HOST:-localhost}"
 
 is_running() {
@@ -74,6 +71,13 @@ start_service() {
   echo "${name} started (PID $(cat "${pid_file}"))."
 }
 
+echo "Stopping any existing local run..."
+"${ROOT_DIR}/scripts/stop-local.sh"
+
+echo "Building UI..."
+TINYSCHOOL_APP_VERSION="${TINYSCHOOL_APP_VERSION:-$(git -C "${ROOT_DIR}" describe --tags --always 2>/dev/null || echo dev)}" \
+  "${ROOT_DIR}/scripts/build-ui.sh"
+
 mkdir -p "${RUN_DIR}" "${RUN_DIR}/go-cache"
 
 start_service \
@@ -85,18 +89,8 @@ start_service \
     GOCACHE="${RUN_DIR}/go-cache" \
     TINYSCHOOL_API_ADDRESS="${API_HOST}:${API_PORT}" \
     TINYSCHOOL_DB_PATH="${RUN_DIR}/tinyschool.db" \
-    TINYSCHOOL_APP_BASE_URL="http://${PUBLIC_HOST}:${UI_PORT}" \
+    TINYSCHOOL_APP_BASE_URL="http://${PUBLIC_HOST}:${API_PORT}" \
     go run .
 
-start_service \
-  "UI" \
-  "${ROOT_DIR}/tinyschool-ui" \
-  "${RUN_DIR}/ui.log" \
-  "${UI_PID_FILE}" \
-  env \
-    NUXT_PUBLIC_API_BASE="http://${PUBLIC_HOST}:${API_PORT}/api/v1" \
-    NUXT_PUBLIC_APP_VERSION="${TINYSCHOOL_APP_VERSION:-$(git -C "${ROOT_DIR}" describe --tags --always 2>/dev/null || echo dev)}" \
-    bun run dev --host "${UI_HOST}" --port "${UI_PORT}"
-
-echo "Tiny School is starting at http://${PUBLIC_HOST}:${UI_PORT}"
+echo "Tiny School is starting at http://${PUBLIC_HOST}:${API_PORT}"
 echo "Logs: ${RUN_DIR}"

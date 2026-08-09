@@ -15,7 +15,7 @@ const (
 	defaultDatabasePath    = "tinyschool.db"
 	defaultShutdownTimeout = 10 * time.Second
 	defaultSessionDuration = 24 * time.Hour
-	defaultAppBaseURL      = "http://localhost:3000"
+	defaultAppBaseURL      = "http://localhost:8080"
 	defaultResetTokenTTL   = time.Hour
 )
 

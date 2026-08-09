@@ -2,3 +2,7 @@ requirements
 .runs/
 .keys/
 playwright/output/
+
+# Generated Nuxt SPA copied into the API embed tree (placeholder index.html stays tracked).
+tinyschool-api/internal/staticui/dist/**
+!tinyschool-api/internal/staticui/dist/index.html
