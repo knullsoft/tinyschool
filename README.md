@@ -89,69 +89,18 @@ a hand-edited sheet may reorder or drop columns.
 An export of an empty account is a usable import template: every sheet is
 present with its header row.
 
-## Deploy (SSH)
+## Deploy with Dokploy
 
-Requires the shared edge from [`../deployer`](../deployer) (Swarm + Traefik on
-overlay network `proxy`). The same script deploys from a laptop or GitHub Actions:
+TinySchool uses the root `docker-compose.yml`. The single container embeds the
+UI and API, while the named volume persists SQLite data and backups.
 
-```text
-laptop: upload source → build image → docker stack deploy → Traefik HTTPS → /ready
-CI:     upload source → pull CI image → docker stack deploy → Traefik HTTPS → /ready
-```
+1. In Dokploy, create a **Docker Compose** service from this repository.
+2. Set the Compose path to `./docker-compose.yml`.
+3. Add `TINYSCHOOL_APP_BASE_URL=https://your-domain.example` in Environment.
+4. In Domains, route your domain to service `app`, port `8080`, then deploy.
 
-```text
-deployer (once)          tinyschool (per release)
-─────────────────        ─────────────────────────
-Swarm + Traefik    ──►   stack tinyschool_api
-overlay: proxy           deploy.labels → Host(DOMAIN)
-certresolver: le         joins network proxy
-```
+Optional: set `APP_VERSION` to the version shown in the UI footer.
 
-TinySchool deploys as Swarm stack `tinyschool` (`deploy/stack.yaml`). Labels live
-under `deploy.labels` so Traefik's swarm provider picks them up. The API image
-embeds the static UI; Traefik proxies everything to port 8080.
-
-```bash
-# one-time on the VPS (from the deployer repo)
-DEPLOY_HOST=147.93.97.228 ACME_EMAIL=you@example.com ./scripts/bootstrap-vps.sh
-
-# then from this repo
-ssh-copy-id root@147.93.97.228
-./scripts/deploy.sh
-```
-
-Default URL: `https://tinyschool.147.93.97.228.nip.io`
-
-No image variable is needed when building on the server. `IMAGE_API` is an
-optional CI override for pulling a pre-built image from the registry.
-
-Override with `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH`, `DEPLOY_DOMAIN`,
-`STACK_NAME`, or `PROXY_NETWORK`. SQLite lives in the stack volume
-`tinyschool_data` (single replica on the manager); TLS stays with Traefik.
-
-### GitHub Actions
-
-Add the private key as the `DEPLOY_SSH_PRIVATE_KEY` repository secret.
-Optional repository variables use the same `DEPLOY_*` names above.
-
-#### Releases
-
-Versions are git tags (`vX.Y.Z`). The tag is baked into the UI at image build
-time and shown as a subtle footer on every page.
-
-```text
-tag v0.1.0 ──► Deploy workflow ──► api image + production ──► footer shows v0.1.0
-```
-
-Create a release either way:
-
-1. **From GitHub** — Actions → **Release** → Run workflow → enter `v0.1.0`
-2. **From git** — tag and push yourself:
-
-```bash
-git tag -a v0.1.0 -m "Release v0.1.0"
-git push origin v0.1.0
-```
-
-Pushing a `v*.*.*` tag runs **Deploy**. Manual **Deploy** (workflow_dispatch)
-redeploys the current commit using `git describe` for the footer version.
+Dokploy manages HTTPS and routing. Do not publish port `8080` on the host.
+The `tinyschool-data` named volume can be backed up through Dokploy's volume
+backup feature.

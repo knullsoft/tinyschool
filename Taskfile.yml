@@ -20,8 +20,3 @@ tasks:
     desc: Capture light/dark Playwright screenshots
     cmds:
       - ./scripts/take-screenshot.sh
-
-  deploy:
-    desc: Deploy to the remote host over SSH
-    cmds:
-      - ./scripts/deploy.sh

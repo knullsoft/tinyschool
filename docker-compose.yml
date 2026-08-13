@@ -1,0 +1,25 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: deploy/api.Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
+    restart: unless-stopped
+    environment:
+      TINYSCHOOL_API_ADDRESS: ":8080"
+      TINYSCHOOL_DB_PATH: /data/tinyschool.db
+      TINYSCHOOL_APP_BASE_URL: ${TINYSCHOOL_APP_BASE_URL:-http://localhost:8080}
+    expose:
+      - "8080"
+    volumes:
+      - tinyschool-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  tinyschool-data:
